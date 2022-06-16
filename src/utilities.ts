@@ -1,6 +1,6 @@
 /** * Copyright (c) 2018, Neap Pty Ltd.
  * All rights reserved.
- * 
+ *
  * This source code is licensed under the BSD-style license found in the
  * LICENSE file in the root directory of this source tree.
 */
@@ -35,7 +35,7 @@ const log = (msg, name, transformFn) => chain(name ? `${name}: ${typeof(msg) != 
  * @param  {String} t   Tab replacement
  * @return {String}     Escaped text
  */
-const escapeGraphQlSchema = (sch, cr='░', t=' ') => sch.replace(/[\n\r]+/g, cr).replace(/[\t\r]+/g, t).replace(/\s+/g, ' ')
+const escapeGraphQlSchema = (sch: string, cr='░', t=' ') => sch.replace(/[\n\r]+/g, cr).replace(/[\t\r]+/g, t).replace(/\s+/g, ' ')
 const removeMultiSpaces = s => s.replace(/ +(?= )/g,'')
 const matchLeftNonGreedy = (str, startChar, endChar) => chain(str.match(new RegExp(`${startChar}(.*?)${endChar}`)))
     .next(m => m && m.length > 0
@@ -51,19 +51,19 @@ const isScalarType = type => GRAPHQLSCALARTYPES[type]
 
 /**
  * Check whether or not the 'type' that is defined in the 'schemaAST' is of type node.
- * 
+ *
  * @param  {String}   type      Type name
  * @param  {Array}    schemaAST Array of schema objects
  * @return {Boolean}            Result
  */
-const isNodeType = (type, schemaAST) => 
+const isNodeType = (type, schemaAST) =>
     chain(throwError(!type, 'Error in method \'isNodeType\': Argument \'type\' is required.'))
         .next(() => type.replace(/!$/, ''))
         .next(type => (type.match(/^\[(.*?)\]$/) || [null, type])[1])
         .next(type => isScalarType(type)
-            ? false 
+            ? false
             :   chain({ type, typeAST: schemaAST.find(x => x.name == type)})
-                .next(({type, typeAST}) => !typeAST 
+                .next(({type, typeAST}) => !typeAST
                     ? throwError(true, `Error in method 'isNodeType': Type '${type}' does not exist in the GraphQL schema.`)
                     : (typeAST.type == 'TYPE' && typeAST.metadata && typeAST.metadata.name == 'node') ? true : false)
                 .val())
@@ -71,57 +71,57 @@ const isNodeType = (type, schemaAST) =>
 
 /**
  * If the schemaAST's metadata is of type 'edge', it extracts its body.
- * 
- * @param  {Object} metadata SchemaAST's metadata 
+ *
+ * @param  {Object} metadata SchemaAST's metadata
  * @return {String}          SchemaAST's metadata's body
  */
-const getEdgeDesc = metadata => (!metadata || metadata.name != 'edge') ? null : metadata.body.replace(/(^\(|\)$)/g, '') 
+const getEdgeDesc = metadata => (!metadata || metadata.name != 'edge') ? null : metadata.body.replace(/(^\(|\)$)/g, '')
 
 /**
  * Remove potential alias in queries similor to 'users:persons'
  * @param  {String} query e.g. 'users:persons'
  * @return {String}       e.g. 'persons'
  */
-const removeAlias = (query='') => query.split(':').slice(-1).join('') 
+const removeAlias = (query='') => query.split(':').slice(-1).join('')
 
 /**
  * [description]
- * 
+ *
  * @param  {Object} queryProp       Property object from the QueryAST
  * @param  {Object} parentTypeAST   Schema type object from the SchemaAST that is assumed to contain the queryProp
  * @param  {Array}  schemaAST       Entire SchemaAST
  * @return {Object}                 Query prop's AST enriched with all metadata from the schemaAST
  */
-const addMetadataToProperty = (queryProp, parentTypeAST, schemaAST) => 
+const addMetadataToProperty = (queryProp, parentTypeAST, schemaAST) =>
     chain(parentTypeAST.blockProps.find(x => x.details.name == removeAlias(queryProp.name)))
     .next(schemaProp => {
         if (schemaProp)
-            return { 
-                name: queryProp.name, 
+            return {
+                name: queryProp.name,
                 kind: queryProp.kind,
-                type: schemaProp.details.result.name, 
+                type: schemaProp.details.result.name,
                 metadata: schemaProp.details.metadata,
                 isNode: isNodeType(schemaProp.details.result.name, schemaAST),
-                edge: getEdgeDesc(schemaProp.details.metadata), 
+                edge: getEdgeDesc(schemaProp.details.metadata),
                 args: queryProp.args,
                 properties: queryProp.properties && queryProp.properties.length > 0
                     ?   chain(schemaProp.details.result.name)
                         .next(typename => ((typename.match(/^\[(.*?)\]$/) || [null, typename])[1]).replace(/!$/, ''))
                         .next(typename => schemaAST.find(x => x.type == 'TYPE' && x.name == typename))
-                        .next(parentTypeAST => parentTypeAST 
+                        .next(parentTypeAST => parentTypeAST
                             ? queryProp.properties.map(queryProp => addMetadataToProperty(queryProp, parentTypeAST, schemaAST))
                             : throwError(true, `Error in method 'addMetadataToProperty': Cannot find type '${schemaProp.details.result.name}' in the GraphQL Schema.`))
                         .val()
                     :   null
             }
         else
-            return { 
-                name: queryProp.name, 
+            return {
+                name: queryProp.name,
                 kind: queryProp.kind,
-                type: null, 
+                type: null,
                 metadata: null,
                 isNode: null,
-                edge: null, 
+                edge: null,
                 args: queryProp.args,
                 properties: queryProp.properties,
                 error: schemaProp ? null : `Error in method 'addMetadataToProperty': Query function '${queryProp.name}' is not defined in the GraphQL schema (specifically in the 'parentTypeAST' argument).`
@@ -131,20 +131,20 @@ const addMetadataToProperty = (queryProp, parentTypeAST, schemaAST) =>
 
 /**
  * Parses a string GraphQL query to an AST enriched with metadata from the GraphQL Schema AST.
- *  
+ *
  * @param  {String}  query          Raw string GraphQL query (e.g. query Hello($person: String, $animal: String) { ... })
  * @param  {Array}   schemaAST      Array of schema objects. Use 'graphql-s2s' npm package('getSchemaParts' method) to get that AST.
  * @return {Array}   output         Array represent all query's AST.
  * @return {String}  output.head    Head of the original query (e.g. Hello($person: String, $animal: String))
  * @return {String}  output.type    Query type (e.g. query || mutation || subscription)
  */
-const addMetadataToAST = (operation, schemaAST, queryType='Query') => 
+const addMetadataToAST = (operation, schemaAST, queryType='Query') =>
     chain(
         // If that object has already been processed, then get it.
-        schemaAST[`get${queryType}`] || 
+        schemaAST[`get${queryType}`] ||
         // If this is the first time we access that object, then compute it and save it for later.
         chain(schemaAST[`get${queryType}`] = schemaAST.find(x => x.type == 'TYPE' && x.name == queryType)).next(() => schemaAST[`get${queryType}`]).val())
-    .next(parentTypeAST => 
+    .next(parentTypeAST =>
         chain(operation && operation.properties
             ? operation.properties.map(prop => addMetadataToProperty(prop, parentTypeAST, schemaAST))
             : [])
@@ -167,7 +167,7 @@ const parseKeyValue = ({ kind, name, value }) => {
         name: name ? name.value : null,
         value: !name && !value.kind ? { kind, value } : {
             kind: value.kind,
-            value: 
+            value:
                 value.name ? value.name.value :
                 value.fields ? value.fields.map(f => parseKeyValue(f)) :
                 value.values ? value.values.map(v => v.value ? parseKeyValue(v) : v.fields.map(f => parseKeyValue(f))) : value.value
@@ -175,8 +175,8 @@ const parseKeyValue = ({ kind, name, value }) => {
     }
 }
 
-const parseArguments = astArgs => !astArgs || !astArgs.length 
-    ? null 
+const parseArguments = astArgs => !astArgs || !astArgs.length
+    ? null
     : astArgs.map(a => parseKeyValue(a))
 
 const parseFragments = (fragments = []) => fragments.length == 0 ? null : fragments.map(fragment => ({
@@ -207,29 +207,29 @@ const getQueryAST = (query, operationName, schemaAST, options={}) => {
         const operation = {
             type: ast.operation,
             name: ast.name ? ast.name.value : null,
-            variables: ast.variableDefinitions 
+            variables: ast.variableDefinitions
                 ? ast.variableDefinitions.map(({ variable:v, type:t }) => {
                     const nonNullType = t.kind == 'NonNullType'
                     const exclPoint = nonNullType ? '!' : ''
                     const typ = nonNullType ? t.type : t
-                    return { 
-                        name: v.name.value, 
+                    return {
+                        name: v.name.value,
                         type: typ.kind == 'ListType' ? `[${typ.type.name.value}]${exclPoint}` : `${typ.name.value}${exclPoint}` }
-                    }) 
+                    })
                 : null,
-            properties: parseProperties(ast.selectionSet), 
+            properties: parseProperties(ast.selectionSet),
             fragments: parseFragments(fragments)
         }
         const postProcess = options.defrag ? o => addMetadataToAST(defrag(o), schemaAST, _graphQlQueryTypes[ast.operation]) : o => o
         let output = postProcess(addMetadataToAST(operation, schemaAST, _graphQlQueryTypes[ast.operation] ))
-        Object.assign(output, { 
-            filter: fn => filterQueryAST(output, fn), 
+        Object.assign(output, {
+            filter: fn => filterQueryAST(output, fn),
             some: fn => detectQueryAST(output, fn),
             propertyPaths: fn => getQueryASTPropertyPaths(output, fn),
             containsProp: propPath => {
                 if (!propPath)
                     return false
-                
+
                 const matchFn = propPath instanceof RegExp ? (p => p.match(propPath)) : (p => p.indexOf(propPath) >= 0)
                 return (getQueryASTPropertyPaths(output, ast => ast && ast.name) || []).some(({ property }) => {
                     const propWithNoAliases = (property || '').split('.').map(part => part.split(':').slice(-1)[0]).join('.')
@@ -246,7 +246,7 @@ const getQueryAST = (query, operationName, schemaAST, options={}) => {
 const stringifyOperation = (operation={}) => {
     const acc = []
     acc.push(operation.type || 'query')
-    if (operation.name) 
+    if (operation.name)
         acc.push(operation.name)
     if (operation.variables && operation.variables.length > 0)
         acc.push(`(${operation.variables.map(v => `$${v.name}: ${v.type}`).join(', ')})`)
@@ -258,7 +258,7 @@ const filterQueryAST = (operation={}, predicate, onlyReturnBody=false) => {
     if (operation.properties && predicate) {
         const filteredBody = operation.properties
             .filter(x => predicate(x))
-            .map(x => x.properties && x.properties.length > 0 
+            .map(x => x.properties && x.properties.length > 0
                 ? Object.assign({}, x, { properties: filterQueryAST(x, predicate, true) })
                 : x)
 
@@ -268,14 +268,14 @@ const filterQueryAST = (operation={}, predicate, onlyReturnBody=false) => {
         return onlyReturnBody ? null : operation
 }
 
-const detectQueryAST = (operation={}, predicate) => 
-    operation.properties && 
-    predicate && 
+const detectQueryAST = (operation={}, predicate) =>
+    operation.properties &&
+    predicate &&
     (operation.properties.some(x => predicate(x)) || operation.properties.some(x => detectQueryAST(x, predicate)))
 
 const getQueryASTPropertyPaths = (operation={}, predicate, parent='') => {
     const prefix = parent ? parent + '.' : parent
-    if (operation.properties && predicate) 
+    if (operation.properties && predicate)
         return operation.properties.reduce((acc, p) => {
             if (predicate(p))
                 acc.push({ property: prefix + p.name, type: p.type })
@@ -289,10 +289,10 @@ const getQueryASTPropertyPaths = (operation={}, predicate, parent='') => {
 
 /**
  * Rebuild a string GraphQL query from the query AST
- * @param  {Object}  operation  Query AST 
+ * @param  {Object}  operation  Query AST
  * @return {String}             String GraphQL query
  */
-const buildQuery = (operation={}, skipOperationParsing=false) => 
+const buildQuery = (operation={}, skipOperationParsing=false) =>
     chain((operation.properties || []).map(a => buildSingleQuery(a)).join('\n'))
     .next(body => `${skipOperationParsing ? '' : stringifyOperation(operation)}{\n${body}\n}`)
     .next(op => operation.fragments && operation.fragments.length > 0
@@ -300,7 +300,7 @@ const buildQuery = (operation={}, skipOperationParsing=false) =>
         : op)
     .val()
 
-const stringifyFragments = (fragments=[]) => 
+const stringifyFragments = (fragments=[]) =>
     fragments.map(f => `fragment ${f.name} on ${f.type} ${buildQuery(f, true)}`).join('\n')
 
 const buildSingleQuery = AST => {
@@ -308,8 +308,8 @@ const buildSingleQuery = AST => {
         const fnName = AST.name
         const args = AST.args ? stringifyArgs(AST.args).trim() : ''
         const fields = AST.properties && AST.properties.length > 0 ? buildQuery(AST, true) : ''
-        return AST.kind == 'FragmentSpread' 
-            ? `...${fnName}` 
+        return AST.kind == 'FragmentSpread'
+            ? `...${fnName}`
             : `${fnName}${args ? `(${args})` : ''}${fields}`
     }
     else
@@ -318,13 +318,13 @@ const buildSingleQuery = AST => {
 
 const stringifyValue = ({kind, value}) => {
     if (Array.isArray(value))
-        return kind == 'ListValue' ? `[${stringifyArgs(value)}]` : `{${stringifyArgs(value)}}`   
+        return kind == 'ListValue' ? `[${stringifyArgs(value)}]` : `{${stringifyArgs(value)}}`
     else
         return  kind == 'Variable' ? `$${value}` :
             kind == 'StringValue' ? `"${value}"` : value
 }
 
-const stringifyArgs = (args=[]) => 
+const stringifyArgs = (args=[]) =>
     `${args.map(arg => Array.isArray(arg) ? `{${stringifyArgs(arg)}}` : `${arg.name ? arg.name + ':' : '' }${stringifyValue(arg.value)}`).join(',')}`
 
 let _defragCache = {}
@@ -345,10 +345,10 @@ const replaceFragmentsInProperty = (prop, fragments=[]) => {
     if (prop.kind == 'FragmentSpread') {
         const fragmentName = prop.name
         const fragment = fragments.find(f => f.name == fragmentName)
-        if (!fragment) 
+        if (!fragment)
             throw new Error(`Invalid GraphQL query. Fragment '${fragmentName}' does not exist.`)
 
-        if (!_defragCache[fragmentName]) 
+        if (!_defragCache[fragmentName])
             _defragCache[fragmentName] = replaceFragmentsInProperties(fragment.properties, fragments)
 
         return _defragCache[fragmentName]
@@ -356,7 +356,7 @@ const replaceFragmentsInProperty = (prop, fragments=[]) => {
     else if (prop.properties && prop.properties.length > 0) {
         const properties = replaceFragmentsInProperties(prop.properties, fragments)
         return Object.assign({}, prop, { properties })
-    } 
+    }
     else
         return prop
 }
@@ -368,8 +368,8 @@ const replaceFragmentsInProperties = (properties, fragments=[]) => {
             if (Array.isArray(_p)) {
                 _p.forEach(property => {
                     const existingProp = props[property.name]
-                    // Save it if this property is new or if the existing property does not have a metadata property 
-                    // WARNING: metadata === undefined is better than metadata == null as it really proves that metadata 
+                    // Save it if this property is new or if the existing property does not have a metadata property
+                    // WARNING: metadata === undefined is better than metadata == null as it really proves that metadata
                     // has never been set.
                     if (!existingProp || existingProp.metadata === undefined)
                         props[property.name] = property
